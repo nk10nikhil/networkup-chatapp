@@ -1,0 +1,64 @@
+import { FiMoreHorizontal, FiPhone, FiVideo, FiArrowLeft } from "react-icons/fi";
+import Avatar from "@/components/ui/Avatar";
+
+interface ChatHeaderProps {
+    participant: {
+        _id: string;
+        name: string;
+        email: string;
+        avatar?: string;
+    };
+    isMobile?: boolean;
+    onBackClick?: () => void;
+    isOnline?: boolean;
+}
+
+export default function ChatHeader({
+    participant,
+    isMobile = false,
+    onBackClick,
+    isOnline = false
+}: ChatHeaderProps) {
+    return (
+        <div className="flex items-center px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            {isMobile && (
+                <button
+                    onClick={onBackClick}
+                    className="mr-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                    <FiArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                </button>
+            )}
+
+            <div className="flex items-center flex-1">
+                <Avatar
+                    name={participant.name}
+                    image={participant.avatar}
+                    userId={participant._id}
+                    size="md"
+                />
+
+                <div className="ml-3">
+                    <h3 className="font-medium text-gray-900 dark:text-white">
+                        {participant.name}
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {isOnline ? "Online" : "Offline"}
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+                <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                </button>
+                <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                </button>
+                <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <FiMoreHorizontal className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                </button>
+            </div>
+        </div>
+    );
+}
