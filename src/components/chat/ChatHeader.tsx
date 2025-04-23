@@ -13,7 +13,7 @@ interface ChatHeaderProps {
     isOnline?: boolean;
 }
 
-export default function ChatHeader({
+export function ChatHeader({
     participant,
     isMobile = false,
     onBackClick,

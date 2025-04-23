@@ -26,6 +26,7 @@ export interface Chat {
     };
     createdAt: Date;
     updatedAt: Date;
+    isOptimistic?: boolean; // Flag for optimistic UI updates
 }
 
 export interface AuthUser {
@@ -39,7 +40,9 @@ export type MessageWithSender = Message & {
     senderDetails?: {
         name: string;
         avatar?: string;
-    }
+    };
+    pending?: boolean;      // Indicates an optimistic update that's still sending
+    isOptimistic?: boolean; // Flag to identify optimistic (temporary) messages
 }
 
 export type ChatWithParticipant = Chat & {

@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { FiMoreHorizontal, FiPhone, FiVideo, FiArrowLeft } from "react-icons/fi";
-import { MessageWithSender } from "@/utils/types";
 import Message from "./Message";
 import MessageInput from "./MessageInput";
-import { getInitials, getAvatarColor } from "@/utils/helpers";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { encryptMessage, decryptMessage, generateChatKey } from "@/lib/encryption";
+import useChat from "@/hooks/useChat";
+import { ChatHeader } from "./ChatHeader";
+import Spinner from "@/components/ui/Spinner";
 
 interface ChatAreaProps {
     chatId: string;
@@ -23,55 +23,28 @@ interface ChatAreaProps {
 }
 
 export default function ChatArea({ chatId, currentUserId, participant, isMobile = false }: ChatAreaProps) {
-    const [messages, setMessages] = useState<MessageWithSender[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [sending, setSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
-    // Generate encryption key for this chat
-    const chatKey = generateChatKey(currentUserId, participant._id.toString());
-
-    const fetchMessages = async () => {
-        try {
-            const response = await fetch(`/api/messages?chatId=${chatId}`);
-
-            if (response.ok) {
-                const fetchedMessages = await response.json();
-
-                // Decrypt messages
-                const decryptedMessages = fetchedMessages.map((msg: MessageWithSender) => ({
-                    ...msg,
-                    content: decryptMessage(msg.content, chatKey),
-                    senderDetails: msg.sender === participant._id.toString() ? {
-                        name: participant.name,
-                        avatar: participant.avatar
-                    } : undefined
-                }));
-
-                setMessages(decryptedMessages);
-            }
-        } catch (error) {
-            console.error("Error fetching messages:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (chatId) {
-            setLoading(true);
-            fetchMessages();
-
-            // Poll for new messages
-            const interval = setInterval(fetchMessages, 5000);
-            return () => clearInterval(interval);
-        }
-    }, [chatId]);
+    // Use our enhanced hook for better real-time messaging
+    const {
+        messages,
+        loading,
+        error,
+        sendMessage,
+        markAsRead
+    } = useChat(chatId, participant._id.toString());
 
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Mark messages as read when viewing the chat
+    useEffect(() => {
+        if (messages.length > 0) {
+            markAsRead();
+        }
+    }, [messages, markAsRead]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -79,43 +52,8 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
 
     const handleSendMessage = async (content: string) => {
         if (!content.trim()) return;
-
-        setSending(true);
-
-        try {
-            // Encrypt message before sending
-            const encryptedContent = encryptMessage(content, chatKey);
-
-            const response = await fetch("/api/messages", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    chatId,
-                    content: encryptedContent,
-                }),
-            });
-
-            if (response.ok) {
-                const newMessage = await response.json();
-                // Add the decrypted message to the UI
-                setMessages(prevMessages => [
-                    ...prevMessages,
-                    {
-                        ...newMessage,
-                        content, // Use the original content for display
-                        createdAt: new Date(),
-                    }
-                ]);
-                scrollToBottom();
-            }
-        } catch (error) {
-            console.error("Error sending message:", error);
-            // Handle error (show toast, etc.)
-        } finally {
-            setSending(false);
-        }
+        await sendMessage(content);
+        // Scroll happens automatically when messages state updates
     };
 
     const handleBackClick = () => {
@@ -125,61 +63,30 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
     return (
         <div className="flex flex-col h-full">
             {/* Chat header */}
-            <div className="flex items-center px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                {isMobile && (
-                    <button
-                        onClick={handleBackClick}
-                        className="mr-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                        <FiArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                    </button>
-                )}
-
-                <div className="flex items-center flex-1">
-                    {participant.avatar ? (
-                        <Image
-                            src={participant.avatar}
-                            alt={participant.name}
-                            width={40}
-                            height={40}
-                            className="w-10 h-10 rounded-full object-cover"
-                        />
-                    ) : (
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getAvatarColor(participant._id.toString())}`}>
-                            <span className="text-white font-medium">
-                                {getInitials(participant.name)}
-                            </span>
-                        </div>
-                    )}
-
-                    <div className="ml-3">
-                        <h3 className="font-medium text-gray-900 dark:text-white">
-                            {participant.name}
-                        </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {loading ? "Loading..." : messages.length > 0 ? "Online" : "Start a conversation"}
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                    <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                    </button>
-                    <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                    </button>
-                    <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <FiMoreHorizontal className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                    </button>
-                </div>
-            </div>
+            <ChatHeader
+                participant={participant}
+                isMobile={isMobile}
+                onBackClick={handleBackClick}
+                isOnline={!loading && messages.length > 0}
+            />
 
             {/* Messages area */}
             <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-gray-900">
                 {loading ? (
                     <div className="flex justify-center items-center h-full">
-                        <div className="loader">Loading messages...</div>
+                        <Spinner size="lg" />
+                    </div>
+                ) : error ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                        <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
+                            <span className="text-red-500 text-xl">!</span>
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                            Error loading messages
+                        </h3>
+                        <p className="text-gray-500 dark:text-gray-400 max-w-xs">
+                            {error}
+                        </p>
                     </div>
                 ) : messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center">
@@ -208,7 +115,10 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
             </div>
 
             {/* Message input */}
-            <MessageInput onSendMessage={handleSendMessage} isLoading={sending} />
+            <MessageInput
+                onSendMessage={handleSendMessage}
+                isLoading={false} // The loading state is now handled by the optimistic UI
+            />
         </div>
     );
 }

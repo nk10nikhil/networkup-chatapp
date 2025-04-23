@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { MessageWithSender } from '@/utils/types';
 import { useSession } from 'next-auth/react';
 import { encryptMessage, decryptMessage, generateChatKey } from '@/lib/encryption';
@@ -8,85 +7,31 @@ export default function useChat(chatId: string | null, participantId: string | n
     const [messages, setMessages] = useState<MessageWithSender[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
     const { data: session } = useSession();
-    const [socket, setSocket] = useState<Socket | null>(null);
 
     // Generate chat encryption key
     const chatKey = session?.user?.id && participantId
         ? generateChatKey(session.user.id, participantId)
         : null;
 
-    // Connect to socket
-    useEffect(() => {
-        if (!session?.user) return;
-
-        const socketInstance = io({
-            path: '/api/socket',
-            auth: {
-                token: session.user.id,
-            },
-        });
-
-        socketInstance.on('connect', () => {
-            console.log('Socket connected');
-        });
-
-        socketInstance.on('connect_error', (err) => {
-            console.error('Socket connection error:', err);
-            setError('Failed to connect to real-time service');
-        });
-
-        setSocket(socketInstance);
-
-        return () => {
-            socketInstance.disconnect();
-        };
-    }, [session]);
-
-    // Join chat room when chatId changes
-    useEffect(() => {
-        if (!socket || !chatId) return;
-
-        // Join the chat room
-        socket.emit('join_chat', chatId);
-
-        return () => {
-            // Leave the chat room
-            socket.emit('leave_chat', chatId);
-        };
-    }, [socket, chatId]);
-
-    // Listen for new messages
-    useEffect(() => {
-        if (!socket || !chatKey) return;
-
-        const handleNewMessage = (message: MessageWithSender) => {
-            // Decrypt the message
-            const decryptedMessage = {
-                ...message,
-                content: decryptMessage(message.content, chatKey)
-            };
-
-            setMessages(prev => [...prev, decryptedMessage]);
-        };
-
-        socket.on('new_message', handleNewMessage);
-
-        return () => {
-            socket.off('new_message', handleNewMessage);
-        };
-    }, [socket, chatKey]);
-
-    // Fetch messages
-    const fetchMessages = useCallback(async () => {
+    // Fetch messages with time filtering to only get new ones
+    const fetchMessages = useCallback(async (isInitialFetch = false) => {
         if (!chatId || !chatKey) {
             setLoading(false);
             return;
         }
 
         try {
-            setLoading(true);
-            const response = await fetch(`/api/messages?chatId=${chatId}`);
+            if (isInitialFetch) setLoading(true);
+
+            // Build URL with timestamp filter if not initial fetch
+            let url = `/api/messages?chatId=${chatId}`;
+            if (lastFetchTime && !isInitialFetch) {
+                url += `&since=${lastFetchTime.toISOString()}`;
+            }
+
+            const response = await fetch(url);
 
             if (!response.ok) {
                 throw new Error('Failed to fetch messages');
@@ -100,15 +45,30 @@ export default function useChat(chatId: string | null, participantId: string | n
                 content: decryptMessage(msg.content, chatKey)
             }));
 
-            setMessages(decryptedMessages);
+            setLastFetchTime(new Date());
+
+            if (isInitialFetch) {
+                setMessages(decryptedMessages);
+            } else if (decryptedMessages.length > 0) {
+                // Only append new messages (avoid duplicates)
+                const existingIds = new Set(messages.map(m => m._id.toString()));
+                const newMessages = decryptedMessages.filter(
+                    m => !existingIds.has(m._id.toString())
+                );
+
+                if (newMessages.length > 0) {
+                    setMessages(prev => [...prev, ...newMessages]);
+                }
+            }
         } catch (err: any) {
+            console.error('Error fetching messages:', err);
             setError(err.message || 'Something went wrong');
         } finally {
-            setLoading(false);
+            if (isInitialFetch) setLoading(false);
         }
-    }, [chatId, chatKey]);
+    }, [chatId, chatKey, lastFetchTime, messages]);
 
-    // Send message
+    // Send message with optimistic UI updates
     const sendMessage = useCallback(async (content: string) => {
         if (!chatId || !content.trim() || !chatKey || !session?.user) {
             return false;
@@ -118,6 +78,22 @@ export default function useChat(chatId: string | null, participantId: string | n
             // Encrypt message
             const encryptedContent = encryptMessage(content, chatKey);
 
+            // Add optimistic message to UI immediately
+            const optimisticId = `temp-${Date.now()}`;
+            const optimisticMessage: MessageWithSender = {
+                _id: optimisticId,
+                chatId,
+                sender: session.user.id,
+                content, // Use decrypted content for display
+                read: false,
+                createdAt: new Date().toISOString(),
+                pending: true,
+                isOptimistic: true // Flag to identify optimistic updates
+            };
+
+            setMessages(prev => [...prev, optimisticMessage]);
+
+            // Send to server
             const response = await fetch('/api/messages', {
                 method: 'POST',
                 headers: {
@@ -133,20 +109,48 @@ export default function useChat(chatId: string | null, participantId: string | n
                 throw new Error('Failed to send message');
             }
 
-            // Message will be added via socket
+            const savedMessage = await response.json();
+
+            // Replace optimistic message with the real one
+            setMessages(prev =>
+                prev.map(msg =>
+                    msg._id === optimisticId
+                        ? { ...savedMessage, content, pending: false } // Use decrypted content
+                        : msg
+                )
+            );
+
+            // Trigger a refresh to ensure we have the latest messages
+            setTimeout(() => fetchMessages(), 300);
+
             return true;
         } catch (err) {
+            console.error('Error sending message:', err);
+            // Remove optimistic message on error
+            setMessages(prev => prev.filter(msg => msg._id !== `temp-${Date.now()}`));
             setError('Failed to send message');
             return false;
         }
-    }, [chatId, chatKey, session?.user]);
+    }, [chatId, chatKey, session, fetchMessages]);
+
+    // Initial fetch and polling setup
+    useEffect(() => {
+        if (chatId && chatKey) {
+            fetchMessages(true);
+
+            // Set up polling for new messages - adjust interval as needed
+            const interval = setInterval(() => fetchMessages(), 3000);
+
+            return () => clearInterval(interval);
+        }
+    }, [chatId, chatKey, fetchMessages]);
 
     // Mark messages as read
     const markAsRead = useCallback(async () => {
         if (!chatId || !session?.user) return;
 
         try {
-            const response = await fetch(`/api/messages/read`, {
+            const response = await fetch('/api/messages/read', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -162,17 +166,12 @@ export default function useChat(chatId: string | null, participantId: string | n
         }
     }, [chatId, session?.user]);
 
-    // Initial fetch
-    useEffect(() => {
-        fetchMessages();
-    }, [fetchMessages]);
-
     return {
         messages,
         loading,
         error,
         sendMessage,
         markAsRead,
-        refreshMessages: fetchMessages,
+        refreshMessages: () => fetchMessages(true),
     };
 }

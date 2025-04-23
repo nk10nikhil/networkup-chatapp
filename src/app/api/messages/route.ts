@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
 
         const url = new URL(request.url);
         const chatId = url.searchParams.get('chatId');
+        const since = url.searchParams.get('since');
 
         if (!chatId) {
             return NextResponse.json(
@@ -41,9 +42,23 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        // Build query with optional timestamp filter
+        let query: any = {
+            chatId: new ObjectId(chatId)
+        };
+
+        if (since) {
+            try {
+                const sinceDate = new Date(since);
+                query.createdAt = { $gt: sinceDate };
+            } catch (e) {
+                console.error('Invalid date format:', since);
+            }
+        }
+
         // Get messages for this chat
         const messages = await db.collection('messages')
-            .find({ chatId: new ObjectId(chatId) })
+            .find(query)
             .sort({ createdAt: 1 })
             .toArray();
 

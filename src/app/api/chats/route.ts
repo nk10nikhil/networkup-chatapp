@@ -16,13 +16,34 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        const url = new URL(request.url);
+        const since = url.searchParams.get('since');
+
         const { db } = await connectToDatabase();
 
-        // Get all chats where current user is a participant
+        // Build query with optional timestamp filter
+        let query: any = {
+            participants: session.user.id
+        };
+
+        if (since) {
+            try {
+                const sinceDate = new Date(since);
+                query.updatedAt = { $gt: sinceDate };
+            } catch (e) {
+                console.error('Invalid date format:', since);
+            }
+        }
+
+        // Get chats where current user is a participant
         const chats = await db.collection('chats')
-            .find({ participants: session.user.id })
+            .find(query)
             .sort({ updatedAt: -1 })
             .toArray();
+
+        if (chats.length === 0) {
+            return NextResponse.json([]);
+        }
 
         // Get all participant IDs except current user
         const participantIds = new Set();
