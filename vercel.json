@@ -1,0 +1,18 @@
+{
+    "version": 2,
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next",
+    "framework": "nextjs",
+    "env": {
+        "NEXTAUTH_URL": "https://your-app-name.vercel.app",
+        "NEXTAUTH_SECRET": "@nextauth_secret",
+        "MONGODB_URI": "@mongodb_uri",
+        "NEXT_PUBLIC_ENCRYPTION_SECRET": "@encryption_secret"
+    },
+    "functions": {
+        "src/app/api/**/*.ts": {
+            "memory": 1024,
+            "maxDuration": 10
+        }
+    }
+}
