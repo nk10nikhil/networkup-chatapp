@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { sendMessage } from '../lib/db'; // Assuming sendMessage is a function to handle message sending
 
-const MessageInput = ({ recipientId }) => {
+interface MessageInputProps {
+    onSendMessage: (content: string) => void;
+}
+
+const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
     const [message, setMessage] = useState('');
 
-    const handleSendMessage = async (e) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!message) return;
+        if (!message.trim()) return;
 
         try {
-            await sendMessage(recipientId, message);
+            onSendMessage(message);
             setMessage('');
         } catch (error) {
             console.error('Error sending message:', error);
@@ -17,7 +20,7 @@ const MessageInput = ({ recipientId }) => {
     };
 
     return (
-        <form onSubmit={handleSendMessage} className="message-input">
+        <form onSubmit={handleSubmit} className="message-input">
             <input
                 type="text"
                 value={message}

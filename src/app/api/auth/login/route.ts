@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
 import User from '@/models/User';
+import { NextRequest } from 'next/server';
 
-export async function POST(request) {
+export async function POST(request: NextRequest) {
     const { email, password } = await request.json();
 
-    const db = await connectToDatabase();
+    const { db } = await connectToDatabase();
     const user = await db.collection('users').findOne({ email });
 
     if (!user) {

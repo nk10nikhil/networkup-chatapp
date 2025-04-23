@@ -52,9 +52,9 @@ export default function useChat(chatId: string | null, participantId: string | n
                 setMessages(decryptedMessages);
             } else if (decryptedMessages.length > 0) {
                 // Only append new messages (avoid duplicates)
-                const existingIds = new Set(messages.map(m => m._id.toString()));
+                const existingIds = new Set(messages.map((m: MessageWithSender) => m._id.toString()));
                 const newMessages = decryptedMessages.filter(
-                    m => !existingIds.has(m._id.toString())
+                    (m: MessageWithSender) => !existingIds.has(m._id.toString())
                 );
 
                 if (newMessages.length > 0) {
@@ -89,7 +89,7 @@ export default function useChat(chatId: string | null, participantId: string | n
                 sender: session.user.id,
                 content, // Use decrypted content for display
                 read: false,
-                createdAt: new Date().toISOString(),
+                createdAt: new Date(), // Using Date object instead of string
                 pending: true,
                 isOptimistic: true // Flag to identify optimistic updates
             };

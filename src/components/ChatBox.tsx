@@ -3,39 +3,72 @@ import { useSession } from 'next-auth/react';
 import MessageInput from './MessageInput';
 import ChatList from './ChatList';
 import { fetchMessages, sendMessage } from '../lib/db';
-import { encryptMessage, decryptMessage } from '../lib/encryption';
+import { encryptMessage, decryptMessage, generateChatKey } from '../lib/encryption';
+import { ObjectId } from 'mongodb';
 
-const ChatBox = ({ userId }) => {
+interface ChatBoxProps {
+    userId: string;
+}
+
+interface Message {
+    _id?: string | ObjectId;
+    senderId: string;
+    receiverId: string;
+    content: string;
+    createdAt?: Date;
+    read?: boolean;
+}
+
+const ChatBox = ({ userId }: ChatBoxProps) => {
     const { data: session } = useSession();
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState<Message[]>([]);
     const [loading, setLoading] = useState(true);
+    const [chatKey, setChatKey] = useState<string>('');
+
+    useEffect(() => {
+        // Set the encryption key for this chat
+        if (session?.user?.id) {
+            const key = generateChatKey(session.user.id, userId);
+            setChatKey(key);
+        }
+    }, [session?.user?.id, userId]);
 
     useEffect(() => {
         const loadMessages = async () => {
-            if (session) {
+            if (session?.user?.id && chatKey) {
                 const fetchedMessages = await fetchMessages(session.user.id, userId);
                 const decryptedMessages = fetchedMessages.map(msg => ({
                     ...msg,
-                    content: decryptMessage(msg.content),
-                }));
+                    senderId: msg.senderId || '',
+                    receiverId: msg.receiverId || '',
+                    content: decryptMessage(msg.content, chatKey),
+                })) as Message[];
+
                 setMessages(decryptedMessages);
                 setLoading(false);
             }
         };
 
-        loadMessages();
-    }, [session, userId]);
+        if (chatKey) {
+            loadMessages();
+        }
+    }, [session, userId, chatKey]);
 
-    const handleSendMessage = async (content) => {
-        if (session) {
-            const encryptedContent = encryptMessage(content);
-            const newMessage = {
+    const handleSendMessage = async (content: string) => {
+        if (session?.user?.id && chatKey) {
+            const encryptedContent = encryptMessage(content, chatKey);
+            const newMessage: Message = {
                 senderId: session.user.id,
                 receiverId: userId,
                 content: encryptedContent,
             };
             await sendMessage(newMessage);
-            setMessages(prevMessages => [...prevMessages, newMessage]);
+
+            // Add the message with decrypted content to the UI
+            setMessages(prevMessages => [
+                ...prevMessages,
+                { ...newMessage, content }
+            ]);
         }
     };
 

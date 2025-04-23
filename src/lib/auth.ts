@@ -2,6 +2,17 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { connectToDatabase } from '@/lib/db';
 import { compare } from 'bcryptjs';
+import { User } from 'next-auth';
+
+// Extend the built-in User type with our custom properties
+interface CustomUser extends User {
+    avatar?: string;
+}
+
+// Add the verifyPassword function that's being used in login route
+export async function verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
+    return await compare(plainPassword, hashedPassword);
+}
 
 export const authOptions: NextAuthOptions = {
     providers: [
@@ -50,7 +61,8 @@ export const authOptions: NextAuthOptions = {
                 token.id = user.id;
                 token.name = user.name;
                 token.email = user.email;
-                token.avatar = user.avatar;
+                // Use type assertion to handle avatar property
+                token.avatar = (user as CustomUser).avatar;
             }
             return token;
         },

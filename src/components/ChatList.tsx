@@ -1,28 +1,33 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { fetchChatList } from '../lib/db';
 import { Message } from '../utils/types';
 
-const ChatList: React.FC = () => {
-    const [chats, setChats] = useState<Message[]>([]);
-    
-    useEffect(() => {
-        const getChats = async () => {
-            const chatData = await fetchChatList();
-            setChats(chatData);
-        };
+interface ChatListProps {
+    messages?: any[]; // Use a more flexible type to accommodate differences
+}
 
-        getChats();
-    }, []);
+const ChatList: React.FC<ChatListProps> = ({ messages = [] }) => {
+    const [chats, setChats] = useState<any[]>(messages);
+
+    // If messages are passed as props, use them instead of fetching
+    useEffect(() => {
+        setChats(messages);
+    }, [messages]);
 
     return (
         <div className="chat-list">
-            {chats.map(chat => (
-                <div key={chat._id} className="chat-item">
-                    <span className="chat-user">{chat.senderName}</span>
-                    <span className="chat-message">{chat.message}</span>
-                </div>
-            ))}
+            {chats.length === 0 ? (
+                <div className="no-messages">No messages yet</div>
+            ) : (
+                chats.map((chat, index) => (
+                    <div key={chat._id || index} className="chat-item">
+                        <span className="chat-user">
+                            {chat.senderName || chat.sender || 'User'}
+                        </span>
+                        <span className="chat-message">{chat.content}</span>
+                    </div>
+                ))
+            )}
         </div>
     );
 };

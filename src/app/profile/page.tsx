@@ -15,14 +15,22 @@ export default async function ProfilePage() {
 
     // Get user details
     const { db } = await connectToDatabase();
-    const user = await db.collection('users').findOne(
+    const userDoc = await db.collection('users').findOne(
         { _id: new ObjectId(session.user.id) },
         { projection: { password: 0 } }
     );
 
-    if (!user) {
+    if (!userDoc) {
         redirect('/login');
     }
+
+    // Transform MongoDB document to match expected ProfileForm props
+    const user = {
+        _id: userDoc._id.toString(),
+        name: userDoc.name || '',
+        email: userDoc.email || '',
+        avatar: userDoc.avatar || undefined
+    };
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

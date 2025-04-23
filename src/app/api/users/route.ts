@@ -1,7 +1,12 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
-import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
+import { ObjectId } from 'mongodb';
+
+type MongoDBFilter = {
+    [key: string]: any;
+};
 
 // Get all users (except current user)
 export async function GET(request: NextRequest) {
@@ -21,7 +26,7 @@ export async function GET(request: NextRequest) {
         const url = new URL(request.url);
         const searchQuery = url.searchParams.get('search');
 
-        let filter = { _id: { $ne: session.user.id } };
+        let filter: MongoDBFilter = { _id: { $ne: session.user.id } };
 
         // Add search query if present
         if (searchQuery) {

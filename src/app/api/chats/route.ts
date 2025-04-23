@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Get all participant IDs except current user
-        const participantIds = new Set();
+        const participantIds = new Set<string>();
         chats.forEach(chat => {
             chat.participants.forEach((participant: string) => {
                 if (participant !== session.user!.id) {
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
         // Get user details for all participants
         const users = await db.collection('users')
-            .find({ _id: { $in: Array.from(participantIds).map(id => new ObjectId(id.toString())) } })
+            .find({ _id: { $in: Array.from(participantIds).map(id => new ObjectId(id)) } })
             .project({ password: 0 }) // Exclude passwords
             .toArray();
 
