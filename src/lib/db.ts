@@ -3,25 +3,33 @@ import { MongoClient, Db, ObjectId } from 'mongodb';
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 
-if (!process.env.MONGODB_URI) {
-    throw new Error('Please define the MONGODB_URI environment variable');
-}
-
-const uri = process.env.MONGODB_URI;
-
 export async function connectToDatabase() {
     if (cachedClient && cachedDb) {
         return { client: cachedClient, db: cachedDb };
     }
 
-    const client = new MongoClient(uri);
-    await client.connect();
-    const db = client.db();
+    if (!process.env.MONGODB_URI) {
+        console.error('MONGODB_URI environment variable is not defined');
+        throw new Error('Please define the MONGODB_URI environment variable');
+    }
 
-    cachedClient = client;
-    cachedDb = db;
+    const uri = process.env.MONGODB_URI;
 
-    return { client, db };
+    try {
+        console.log('Attempting MongoDB connection...');
+        const client = new MongoClient(uri);
+        await client.connect();
+        const db = client.db();
+        console.log('MongoDB connection established successfully');
+
+        cachedClient = client;
+        cachedDb = db;
+
+        return { client, db };
+    } catch (error) {
+        console.error('Failed to connect to MongoDB:', error);
+        throw new Error(`Database connection failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 /**
