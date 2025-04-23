@@ -5,7 +5,7 @@
     "framework": "nextjs",
     "env": {
         "NEXTAUTH_URL": "https://your-app-name.vercel.app",
-        "NEXTAUTH_SECRET": "@nextauth_secret",
+        "NEXTAUTH_SECRET": "nk10nikhil",
         "MONGODB_URI": "@mongodb_uri",
         "NEXT_PUBLIC_ENCRYPTION_SECRET": "@encryption_secret"
     },
