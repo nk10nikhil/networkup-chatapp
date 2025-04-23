@@ -4,15 +4,9 @@
     "outputDirectory": ".next",
     "framework": "nextjs",
     "env": {
-        "NEXTAUTH_URL": "https://your-app-name.vercel.app",
+        "NEXTAUTH_URL": "https://nextalk.vercel.app",
         "NEXTAUTH_SECRET": "nk10nikhil",
-        "MONGODB_URI": "@mongodb_uri",
-        "NEXT_PUBLIC_ENCRYPTION_SECRET": "@encryption_secret"
-    },
-    "functions": {
-        "src/app/api/**/*.ts": {
-            "memory": 1024,
-            "maxDuration": 10
-        }
+        "MONGODB_URI": "mongodb+srv://nk10nikhil:nk10nikhil@cluster0.t7weic9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
+        "NEXT_PUBLIC_ENCRYPTION_SECRET": "nk10nikhil"
     }
 }
