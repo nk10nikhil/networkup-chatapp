@@ -8,6 +8,7 @@ export default function useChat(chatId: string | null, participantId: string | n
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
+    const [sendingMessage, setSendingMessage] = useState<boolean>(false);
     const { data: session } = useSession();
 
     // Generate chat encryption key
@@ -74,12 +75,14 @@ export default function useChat(chatId: string | null, participantId: string | n
             return false;
         }
 
+        const optimisticId = `temp-${Date.now()}`;
+        setSendingMessage(true);
+
         try {
             // Encrypt message
             const encryptedContent = encryptMessage(content, chatKey);
 
             // Add optimistic message to UI immediately
-            const optimisticId = `temp-${Date.now()}`;
             const optimisticMessage: MessageWithSender = {
                 _id: optimisticId,
                 chatId,
@@ -126,10 +129,12 @@ export default function useChat(chatId: string | null, participantId: string | n
             return true;
         } catch (err) {
             console.error('Error sending message:', err);
-            // Remove optimistic message on error
-            setMessages(prev => prev.filter(msg => msg._id !== `temp-${Date.now()}`));
+            // Remove optimistic message on error - fixed ID comparison
+            setMessages(prev => prev.filter(msg => msg._id !== optimisticId));
             setError('Failed to send message');
             return false;
+        } finally {
+            setSendingMessage(false);
         }
     }, [chatId, chatKey, session, fetchMessages]);
 
@@ -173,5 +178,6 @@ export default function useChat(chatId: string | null, participantId: string | n
         sendMessage,
         markAsRead,
         refreshMessages: () => fetchMessages(true),
+        sendingMessage
     };
 }

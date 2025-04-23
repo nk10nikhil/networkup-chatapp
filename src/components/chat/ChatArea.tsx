@@ -32,7 +32,8 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
         loading,
         error,
         sendMessage,
-        markAsRead
+        markAsRead,
+        sendingMessage
     } = useChat(chatId, participant._id.toString());
 
     useEffect(() => {
@@ -53,7 +54,7 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
     const handleSendMessage = async (content: string) => {
         if (!content.trim()) return;
         await sendMessage(content);
-        // Scroll happens automatically when messages state updates
+        scrollToBottom();
     };
 
     const handleBackClick = () => {
@@ -72,7 +73,7 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
 
             {/* Messages area */}
             <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-gray-900">
-                {loading ? (
+                {loading && messages.length === 0 ? (
                     <div className="flex justify-center items-center h-full">
                         <Spinner size="lg" />
                     </div>
@@ -117,7 +118,7 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
             {/* Message input */}
             <MessageInput
                 onSendMessage={handleSendMessage}
-                isLoading={false} // The loading state is now handled by the optimistic UI
+                isLoading={sendingMessage}
             />
         </div>
     );
