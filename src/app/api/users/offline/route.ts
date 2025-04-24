@@ -2,7 +2,7 @@ import { connectToDatabase } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
-import { ObjectId } from 'mongodb';
+import { forceMarkUserOffline, markInactiveUsersAsOffline } from '@/lib/status-manager';
 
 // POST: Mark user as offline
 export async function POST(request: NextRequest) {
@@ -16,18 +16,18 @@ export async function POST(request: NextRequest) {
             userId = session.user.id;
         } else {
             // For beacon API or other cases where session might not be available
-            // Check if request body contains userId
+            // Try to parse JSON body
             try {
                 const body = await request.json().catch(() => ({}));
                 userId = body?.userId;
             } catch (err) {
-                // If no body, check if userId is in URL
+                // If parsing fails, check if userId is in URL
                 const url = new URL(request.url);
                 userId = url.searchParams.get('userId');
             }
         }
 
-        // If we still don't have a userId, return unauthorized
+        // If we still don't have a userId, return bad request
         if (!userId) {
             return NextResponse.json(
                 { message: 'User ID is required' },
@@ -35,21 +35,21 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Connect to database and update user status
-        const { db } = await connectToDatabase();
+        // Use our status manager to mark the user as offline
+        const result = await forceMarkUserOffline(userId);
 
-        // Mark the user as offline
-        await db.collection('users').updateOne(
-            { _id: new ObjectId(userId) },
-            {
-                $set: {
-                    isOnline: false,
-                    lastActive: new Date()
-                }
-            }
-        );
+        // While we're at it, clean up any other stale online statuses
+        // This helps catch users whose browser didn't fire the beforeunload event
+        await markInactiveUsersAsOffline();
 
-        return NextResponse.json({ success: true });
+        if (result.success) {
+            return NextResponse.json({ success: true });
+        } else {
+            return NextResponse.json(
+                { message: result.error || 'Failed to update status' },
+                { status: 500 }
+            );
+        }
     } catch (error) {
         console.error('Error marking user as offline:', error);
         return NextResponse.json(

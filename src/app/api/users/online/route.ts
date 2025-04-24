@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { ObjectId } from 'mongodb';
+import { markInactiveUsersAsOffline } from '@/lib/status-manager';
 
 // POST: Update user's online status
 export async function POST(request: NextRequest) {
@@ -25,10 +26,17 @@ export async function POST(request: NextRequest) {
             {
                 $set: {
                     isOnline: true,
-                    lastActive: new Date()
+                    lastActive: new Date(),
+                    lastUpdated: new Date()
                 }
             }
         );
+
+        // Periodically clean up stale online statuses while we're at it
+        // Only do this occasionally to avoid excessive database operations
+        if (Math.random() < 0.1) { // 10% chance to run cleanup on each request
+            await markInactiveUsersAsOffline();
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {
