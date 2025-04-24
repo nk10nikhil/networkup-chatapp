@@ -6,18 +6,30 @@ export default function useOnlineStatus(userId: string | null | undefined) {
     const [loading, setLoading] = useState<boolean>(true);
     const { data: session, status } = useSession();
 
-    // Use a ref to store the user ID to prevent closure issues in event handlers
+    // Use a ref to store the user ID for event handlers
     const userIdRef = useRef<string | null>(null);
+
+    // Track if the component is mounted
+    const isMountedRef = useRef<boolean>(true);
+
+    // Track the last heartbeat time
+    const lastHeartbeatRef = useRef<number>(Date.now());
 
     // Update the ref whenever session or userId changes
     useEffect(() => {
         if (session?.user?.id) {
             userIdRef.current = session.user.id;
         }
+
+        return () => {
+            isMountedRef.current = false;
+        };
     }, [session?.user?.id]);
 
     // Function to check another user's online status
     const checkUserOnlineStatus = useCallback(async (id: string) => {
+        if (!isMountedRef.current) return;
+
         try {
             const response = await fetch(`/api/users/online?userId=${id}`);
             if (response.ok) {
@@ -31,44 +43,59 @@ export default function useOnlineStatus(userId: string | null | undefined) {
             console.error('Error checking online status:', error);
             setIsOnline(false);
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
     }, []);
 
     // Function to mark the user as offline
     const markUserOffline = useCallback(async (id: string) => {
         try {
-            // Use sendBeacon for reliable delivery during page unload
+            // Try multiple methods to ensure the request gets through
+
+            // Method 1: Use sendBeacon (most reliable during page unload)
             if (navigator.sendBeacon) {
                 const blob = new Blob([JSON.stringify({ userId: id })], { type: 'application/json' });
-                const success = navigator.sendBeacon('/api/users/offline', blob);
-
-                if (!success) {
-                    // Fallback to fetch with keepalive if sendBeacon fails
-                    await fetch('/api/users/offline', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: id }),
-                        keepalive: true
-                    });
-                }
-            } else {
-                // Fallback for browsers that don't support sendBeacon
-                await fetch('/api/users/offline', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: id }),
-                    keepalive: true
-                });
+                navigator.sendBeacon('/api/users/offline', blob);
             }
+
+            // Method 2: Synchronous XMLHttpRequest as fallback (deprecated but still works in some browsers)
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/users/offline', false); // false = synchronous
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.send(JSON.stringify({ userId: id }));
+            } catch (e) {
+                // Ignore errors, as synchronous XHR might be disabled
+            }
+
+            // Method 3: Fetch with keepalive (modern approach)
+            fetch('/api/users/offline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: id }),
+                keepalive: true
+            }).catch(() => {
+                // Ignore any errors during page unload
+            });
+
+            // Method 4: Try using an image request (old-school but reliable)
+            const img = new Image();
+            img.src = `/api/users/offline?userId=${id}&t=${Date.now()}`;
+
         } catch (error) {
+            // Ignore errors during unload events
             console.error('Failed to mark user as offline:', error);
         }
     }, []);
 
     // Function to update the current user's online status
     const updateOwnOnlineStatus = useCallback(async () => {
-        if (!session?.user) return;
+        if (!session?.user?.id || !isMountedRef.current) return;
+
+        // Update the last heartbeat time
+        lastHeartbeatRef.current = Date.now();
 
         try {
             await fetch('/api/users/online', {
@@ -80,34 +107,38 @@ export default function useOnlineStatus(userId: string | null | undefined) {
         } catch (error) {
             console.error('Error updating own online status:', error);
         }
-    }, [session?.user]);
+    }, [session?.user?.id]);
 
-    // Handle own online status updates
+    // Handle own online status updates - more frequent heartbeats
     useEffect(() => {
         // Skip if not authenticated or no session
-        if (status !== 'authenticated' || !session?.user) return;
+        if (status !== 'authenticated' || !session?.user || !userId) return;
 
         // If we're checking the current user's status
         if (userId === session.user.id) {
-            // Current user is always online
+            // Current user is always online to themselves
             setIsOnline(true);
             setLoading(false);
 
-            // Setup heartbeat to keep the user online in the database
-            const heartbeatInterval = setInterval(updateOwnOnlineStatus, 30000); // Every 30 seconds
+            // Setup more frequent heartbeats (every 15 seconds)
+            const heartbeatInterval = setInterval(() => {
+                updateOwnOnlineStatus();
+            }, 15000);
 
             // Initial heartbeat
             updateOwnOnlineStatus();
 
             return () => {
                 clearInterval(heartbeatInterval);
-                // Also mark user as offline when component unmounts (e.g., logout)
-                markUserOffline(session.user.id);
+                // Try to mark user as offline when component unmounts
+                if (session.user?.id) {
+                    markUserOffline(session.user.id);
+                }
             };
         }
     }, [session?.user, status, userId, updateOwnOnlineStatus, markUserOffline]);
 
-    // Handle other users' online status
+    // More frequent polling for other users' status
     useEffect(() => {
         // Skip if not authenticated or no user ID to check
         if (status !== 'authenticated' || !userId || !session?.user) return;
@@ -118,69 +149,66 @@ export default function useOnlineStatus(userId: string | null | undefined) {
         // Initial check for the other user
         checkUserOnlineStatus(userId);
 
-        // Set up polling to periodically check status
+        // Set up more frequent polling (every 5 seconds)
         const statusCheckInterval = setInterval(() => {
             checkUserOnlineStatus(userId);
-        }, 10000); // Check every 10 seconds
+        }, 5000);
 
         return () => {
             clearInterval(statusCheckInterval);
         };
     }, [userId, session?.user, status, checkUserOnlineStatus]);
 
-    // Set up global event listeners for application closure
+    // Enhanced page visibility & unload handlers
     useEffect(() => {
-        if (!session?.user || status !== 'authenticated') return;
+        if (!session?.user?.id || status !== 'authenticated') return;
+        if (userId !== session.user.id) return; // Only for current user
 
-        // Only handle for current user
-        if (userId !== session.user.id) return;
-
-        // Register these events at the window level
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
+                // User returned to the tab - update online status
                 updateOwnOnlineStatus();
-            } else if (document.visibilityState === 'hidden' && userIdRef.current) {
-                // Optional: You could mark user as "away" status when tab is hidden
-                // For now, we'll just update the lastActive timestamp
-                updateOwnOnlineStatus();
+            } else if (document.visibilityState === 'hidden') {
+                // Tab is hidden - mark user as offline
+                markUserOffline(session.user.id);
             }
         };
 
         const handleBeforeUnload = () => {
-            // This function runs when the user closes the tab/browser
-            if (userIdRef.current) {
-                markUserOffline(userIdRef.current);
-            }
+            // Mark offline when page is about to be unloaded
+            markUserOffline(session.user.id);
         };
 
         const handleOffline = () => {
-            // When browser detects network is offline, mark user as offline
-            if (userIdRef.current) {
-                markUserOffline(userIdRef.current);
-            }
+            // Browser lost connection - mark user as offline
+            markUserOffline(session.user.id);
         };
 
-        // Add event listeners
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        window.addEventListener('offline', handleOffline);
+        // Add event listeners to multiple objects for redundancy
+        document.addEventListener('visibilitychange', handleVisibilityChange, { capture: true });
+        window.addEventListener('beforeunload', handleBeforeUnload, { capture: true });
+        window.addEventListener('unload', handleBeforeUnload, { capture: true });
+        window.addEventListener('pagehide', handleBeforeUnload, { capture: true });
+        window.addEventListener('offline', handleOffline, { capture: true });
 
-        // This is crucial! Also register with the document body for more reliable capture
-        document.body.addEventListener('beforeunload', handleBeforeUnload);
+        // Register with body too for extra reliability
+        document.body.addEventListener('beforeunload', handleBeforeUnload, { capture: true });
 
         return () => {
             // Clean up event listeners
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-            window.removeEventListener('offline', handleOffline);
-            document.body.removeEventListener('beforeunload', handleBeforeUnload);
+            document.removeEventListener('visibilitychange', handleVisibilityChange, { capture: true });
+            window.removeEventListener('beforeunload', handleBeforeUnload, { capture: true });
+            window.removeEventListener('unload', handleBeforeUnload, { capture: true });
+            window.removeEventListener('pagehide', handleBeforeUnload, { capture: true });
+            window.removeEventListener('offline', handleOffline, { capture: true });
+            document.body.removeEventListener('beforeunload', handleBeforeUnload, { capture: true });
 
-            // Final attempt to mark user as offline when component unmounts
-            if (userIdRef.current) {
-                markUserOffline(userIdRef.current);
+            // Last attempt to mark user as offline when component unmounts
+            if (session?.user?.id) {
+                markUserOffline(session.user.id);
             }
         };
-    }, [session?.user, status, userId, updateOwnOnlineStatus, markUserOffline]);
+    }, [session?.user?.id, status, userId, updateOwnOnlineStatus, markUserOffline]);
 
     return { isOnline, loading };
 }

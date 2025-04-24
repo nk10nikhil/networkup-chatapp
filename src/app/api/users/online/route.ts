@@ -5,6 +5,9 @@ import { authOptions } from '@/lib/auth';
 import { ObjectId } from 'mongodb';
 import { markInactiveUsersAsOffline } from '@/lib/status-manager';
 
+// Define a shorter activity threshold for considering a user online (2 minutes)
+const ACTIVITY_THRESHOLD = 2 * 60 * 1000;
+
 // POST: Update user's online status
 export async function POST(request: NextRequest) {
     try {
@@ -32,11 +35,8 @@ export async function POST(request: NextRequest) {
             }
         );
 
-        // Periodically clean up stale online statuses while we're at it
-        // Only do this occasionally to avoid excessive database operations
-        if (Math.random() < 0.1) { // 10% chance to run cleanup on each request
-            await markInactiveUsersAsOffline();
-        }
+        // Always run the cleanup to ensure inactive users are marked offline quickly
+        await markInactiveUsersAsOffline();
 
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -90,25 +90,18 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // If the user has an explicit isOnline status, use that first
-        if (typeof user.isOnline === 'boolean') {
-            // But still check if they've been active recently
-            const isRecentlyActive = user.lastActive &&
-                (new Date().getTime() - new Date(user.lastActive).getTime() < 5 * 60 * 1000);
+        // First, always run cleanup to ensure we're not showing stale online statuses
+        await markInactiveUsersAsOffline();
 
-            // Only consider them online if both flags are true
-            if (user.isOnline && isRecentlyActive) {
-                return NextResponse.json({ isOnline: true });
-            } else {
-                return NextResponse.json({ isOnline: false });
-            }
-        }
+        // A user is considered online ONLY if:
+        // 1. They have the isOnline flag set to true AND
+        // 2. They have been active within the last 2 minutes
+        const isRecentlyActive = user.lastActive &&
+            (new Date().getTime() - new Date(user.lastActive).getTime() < ACTIVITY_THRESHOLD);
 
-        // Fallback: Check if the user has been active in the last 5 minutes
-        const isOnline = user.lastActive &&
-            (new Date().getTime() - new Date(user.lastActive).getTime() < 5 * 60 * 1000);
+        const isUserOnline = user.isOnline === true && isRecentlyActive;
 
-        return NextResponse.json({ isOnline });
+        return NextResponse.json({ isOnline: isUserOnline });
     } catch (error) {
         console.error('Error checking online status:', error);
         return NextResponse.json(
