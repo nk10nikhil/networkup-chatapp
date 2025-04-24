@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { FiMoreHorizontal, FiPhone, FiVideo, FiArrowLeft } from "react-icons/fi";
+import { useEffect, useRef, useState } from "react";
 import Message from "./Message";
 import MessageInput from "./MessageInput";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import useChat from "@/hooks/useChat";
 import { ChatHeader } from "./ChatHeader";
 import Spinner from "@/components/ui/Spinner";
+import EmptyChatState from "./EmptyChatState";
 
 interface ChatAreaProps {
     chatId: string;
@@ -26,16 +25,23 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
-    // Use our enhanced hook for better real-time messaging
+    // Local state to manage UI states
+    const [showEmptyState, setShowEmptyState] = useState<boolean>(false);
+    const [initialLoadComplete, setInitialLoadComplete] = useState<boolean>(false);
+    const hasSetEmptyStateRef = useRef<boolean>(false);
+
+    // Use our enhanced hook for real-time messaging
     const {
         messages,
         loading,
         error,
         sendMessage,
         markAsRead,
-        sendingMessage
+        sendingMessage,
+        initialFetchCompleted
     } = useChat(chatId, participant._id.toString());
 
+    // Scroll to bottom when messages change
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
@@ -47,12 +53,39 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
         }
     }, [messages, markAsRead]);
 
+    // Manage the initial loading state and empty chat determination
+    useEffect(() => {
+        // Only run this once when initial fetch completes
+        if (initialFetchCompleted && !initialLoadComplete) {
+            setInitialLoadComplete(true);
+
+            // If we have no messages after initial load, show empty state permanently
+            if (messages.length === 0 && !hasSetEmptyStateRef.current) {
+                setShowEmptyState(true);
+                hasSetEmptyStateRef.current = true;
+            }
+        }
+    }, [initialFetchCompleted, messages.length, initialLoadComplete]);
+
+    // If messages appear in an empty chat, hide the empty state
+    useEffect(() => {
+        if (showEmptyState && messages.length > 0) {
+            setShowEmptyState(false);
+        }
+    }, [messages.length, showEmptyState]);
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
     const handleSendMessage = async (content: string) => {
         if (!content.trim()) return;
+
+        // If this was an empty chat, hide the empty state permanently
+        if (showEmptyState) {
+            setShowEmptyState(false);
+        }
+
         await sendMessage(content);
         scrollToBottom();
     };
@@ -61,6 +94,9 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
         router.push('/chat');
     };
 
+    // Show loading spinner only during initial load
+    const showLoading = loading && !initialLoadComplete;
+
     return (
         <div className="flex flex-col h-full">
             {/* Chat header */}
@@ -68,12 +104,12 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
                 participant={participant}
                 isMobile={isMobile}
                 onBackClick={handleBackClick}
-                isOnline={!loading && messages.length > 0}
+                isOnline={initialLoadComplete && messages.length > 0}
             />
 
             {/* Messages area */}
             <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-gray-900">
-                {loading && messages.length === 0 ? (
+                {showLoading ? (
                     <div className="flex justify-center items-center h-full">
                         <Spinner size="lg" />
                     </div>
@@ -89,18 +125,8 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
                             {error}
                         </p>
                     </div>
-                ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                        <div className="w-16 h-16 bg-primary-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                            <FiMoreHorizontal className="w-8 h-8 text-primary-500 dark:text-primary-400" />
-                        </div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                            No messages yet
-                        </h3>
-                        <p className="text-gray-500 dark:text-gray-400 max-w-xs">
-                            Send a message to start the conversation with {participant.name}
-                        </p>
-                    </div>
+                ) : showEmptyState ? (
+                    <EmptyChatState participantName={participant.name} />
                 ) : (
                     <div className="space-y-1">
                         {messages.map((message) => (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageWithSender } from '@/utils/types';
 import { useSession } from 'next-auth/react';
 import { encryptMessage, decryptMessage, generateChatKey } from '@/lib/encryption';
@@ -9,7 +9,15 @@ export default function useChat(chatId: string | null, participantId: string | n
     const [error, setError] = useState<string | null>(null);
     const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
     const [sendingMessage, setSendingMessage] = useState<boolean>(false);
+    const [initialFetchCompleted, setInitialFetchCompleted] = useState<boolean>(false);
     const { data: session } = useSession();
+
+    // Keep a reference of message IDs to prevent duplicates
+    const messageIdsRef = useRef<Set<string>>(new Set());
+    // Add a ref to track background polling
+    const isBackgroundPollingRef = useRef<boolean>(false);
+    // Use a ref to store the empty state status to prevent re-renders
+    const isEmptyChatRef = useRef<boolean>(false);
 
     // Generate chat encryption key
     const chatKey = session?.user?.id && participantId
@@ -20,11 +28,25 @@ export default function useChat(chatId: string | null, participantId: string | n
     const fetchMessages = useCallback(async (isInitialFetch = false) => {
         if (!chatId || !chatKey) {
             setLoading(false);
+            setInitialFetchCompleted(true);
             return;
         }
 
+        // Prevent concurrent background polling
+        if (!isInitialFetch && isBackgroundPollingRef.current) {
+            return; // Skip if already polling
+        }
+
         try {
-            if (isInitialFetch) setLoading(true);
+            // Only set loading true for initial fetch, not for background polling
+            if (isInitialFetch) {
+                setLoading(true);
+                // Reset message IDs cache when doing a full refresh
+                messageIdsRef.current = new Set();
+            } else {
+                // Set the background polling flag
+                isBackgroundPollingRef.current = true;
+            }
 
             // Build URL with timestamp filter if not initial fetch
             let url = `/api/messages?chatId=${chatId}`;
@@ -46,28 +68,55 @@ export default function useChat(chatId: string | null, participantId: string | n
                 content: decryptMessage(msg.content, chatKey)
             }));
 
-            setLastFetchTime(new Date());
-
             if (isInitialFetch) {
+                // For initial fetch, replace all messages and update ID cache
+                const newMessageIds = new Set(decryptedMessages.map((m: MessageWithSender) => m._id.toString()));
+                messageIdsRef.current = newMessageIds;
+
+                // Set empty chat status for initial fetch
+                isEmptyChatRef.current = decryptedMessages.length === 0;
+
                 setMessages(decryptedMessages);
+                setInitialFetchCompleted(true);
+                setLastFetchTime(new Date());
             } else if (decryptedMessages.length > 0) {
-                // Only append new messages (avoid duplicates)
-                const existingIds = new Set(messages.map((m: MessageWithSender) => m._id.toString()));
+                // Filter out any messages we already have in state
                 const newMessages = decryptedMessages.filter(
-                    (m: MessageWithSender) => !existingIds.has(m._id.toString())
+                    (m: MessageWithSender) => !messageIdsRef.current.has(m._id.toString())
                 );
 
                 if (newMessages.length > 0) {
+                    // Add new message IDs to our tracking set
+                    newMessages.forEach((m: MessageWithSender) => {
+                        messageIdsRef.current.add(m._id.toString());
+                    });
+
+                    // If we were previously empty, we're not anymore
+                    if (isEmptyChatRef.current) {
+                        isEmptyChatRef.current = false;
+                    }
+
                     setMessages(prev => [...prev, ...newMessages]);
+                    setLastFetchTime(new Date());
                 }
             }
         } catch (err: any) {
             console.error('Error fetching messages:', err);
-            setError(err.message || 'Something went wrong');
+            if (isInitialFetch) {
+                setError(err.message || 'Something went wrong');
+            }
+            // Still mark initial fetch as completed even on error
+            if (isInitialFetch) {
+                setInitialFetchCompleted(true);
+            }
         } finally {
-            if (isInitialFetch) setLoading(false);
+            if (isInitialFetch) {
+                setLoading(false);
+            } else {
+                isBackgroundPollingRef.current = false;
+            }
         }
-    }, [chatId, chatKey, lastFetchTime, messages]);
+    }, [chatId, chatKey, lastFetchTime]);
 
     // Send message with optimistic UI updates
     const sendMessage = useCallback(async (content: string) => {
@@ -94,6 +143,11 @@ export default function useChat(chatId: string | null, participantId: string | n
                 isOptimistic: true // Flag to identify optimistic updates
             };
 
+            // If this was an empty chat, it's not anymore
+            if (isEmptyChatRef.current) {
+                isEmptyChatRef.current = false;
+            }
+
             setMessages(prev => [...prev, optimisticMessage]);
 
             // Send to server
@@ -114,6 +168,9 @@ export default function useChat(chatId: string | null, participantId: string | n
 
             const savedMessage = await response.json();
 
+            // Add the real message ID to our tracking set to prevent duplicates
+            messageIdsRef.current.add(savedMessage._id.toString());
+
             // Replace optimistic message with the real one
             setMessages(prev =>
                 prev.map(msg =>
@@ -122,9 +179,6 @@ export default function useChat(chatId: string | null, participantId: string | n
                         : msg
                 )
             );
-
-            // Trigger a refresh to ensure we have the latest messages
-            setTimeout(() => fetchMessages(), 300);
 
             return true;
         } catch (err) {
@@ -136,17 +190,33 @@ export default function useChat(chatId: string | null, participantId: string | n
         } finally {
             setSendingMessage(false);
         }
-    }, [chatId, chatKey, session, fetchMessages]);
+    }, [chatId, chatKey, session]);
 
     // Initial fetch and polling setup
     useEffect(() => {
+        let isMounted = true;
+
         if (chatId && chatKey) {
+            // Initial fetch
             fetchMessages(true);
 
-            // Set up polling for new messages - adjust interval as needed
-            const interval = setInterval(() => fetchMessages(), 3000);
+            // Set up polling for new messages
+            const interval = setInterval(() => {
+                // Only poll if the component is mounted, initial fetch is completed,
+                // and no background polling is already in progress
+                if (isMounted && initialFetchCompleted && !isBackgroundPollingRef.current) {
+                    fetchMessages(false);
+                }
+            }, 3000);
 
-            return () => clearInterval(interval);
+            return () => {
+                isMounted = false;
+                clearInterval(interval);
+            };
+        } else {
+            // Make sure we mark initialFetchCompleted even if we don't have a chat yet
+            setInitialFetchCompleted(true);
+            setLoading(false);
         }
     }, [chatId, chatKey, fetchMessages]);
 
@@ -171,6 +241,9 @@ export default function useChat(chatId: string | null, participantId: string | n
         }
     }, [chatId, session?.user]);
 
+    // Check if the chat is currently empty
+    const isEmpty = messages.length === 0 && initialFetchCompleted && !loading;
+
     return {
         messages,
         loading,
@@ -178,6 +251,8 @@ export default function useChat(chatId: string | null, participantId: string | n
         sendMessage,
         markAsRead,
         refreshMessages: () => fetchMessages(true),
-        sendingMessage
+        sendingMessage,
+        initialFetchCompleted,
+        isEmpty
     };
 }
