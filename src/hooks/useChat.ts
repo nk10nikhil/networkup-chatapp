@@ -70,7 +70,10 @@ export default function useChat(chatId: string | null, participantId: string | n
 
             if (isInitialFetch) {
                 // For initial fetch, replace all messages and update ID cache
-                const newMessageIds = new Set(decryptedMessages.map((m: MessageWithSender) => m._id.toString()));
+                // Fix the type error by explicitly creating a Set<string>
+                const newMessageIds = new Set<string>(
+                    decryptedMessages.map((m: MessageWithSender) => m._id.toString())
+                );
                 messageIdsRef.current = newMessageIds;
 
                 // Set empty chat status for initial fetch
