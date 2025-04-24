@@ -32,20 +32,31 @@ export function ChatHeader({
             )}
 
             <div className="flex items-center flex-1">
-                <Avatar
-                    name={participant.name}
-                    image={participant.avatar}
-                    userId={participant._id}
-                    size="md"
-                />
+                <div className="relative">
+                    <Avatar
+                        name={participant.name}
+                        image={participant.avatar}
+                        userId={participant._id}
+                        size="md"
+                    />
+                    {/* Online status indicator dot */}
+                    <span
+                        className={`absolute right-0 bottom-0 block h-3 w-3 rounded-full ring-2 ring-white ${isOnline ? 'bg-green-500' : 'bg-gray-400'
+                            }`}
+                    />
+                </div>
 
                 <div className="ml-3">
                     <h3 className="font-medium text-gray-900 dark:text-white">
                         {participant.name}
                     </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {isOnline ? "Online" : "Offline"}
-                    </p>
+                    <div className="flex items-center">
+                        <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${isOnline ? 'bg-green-500' : 'bg-gray-400'
+                            }`}></span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {isOnline ? "Online" : "Offline"}
+                        </p>
+                    </div>
                 </div>
             </div>
 

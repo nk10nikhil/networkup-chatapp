@@ -64,10 +64,10 @@ export async function GET(request: NextRequest) {
 
         const { db } = await connectToDatabase();
 
-        // Get the user's lastActive timestamp
+        // Get the user's online status and lastActive timestamp
         const user = await db.collection('users').findOne(
             { _id: new ObjectId(userId) },
-            { projection: { lastActive: 1 } }
+            { projection: { lastActive: 1, isOnline: 1 } }
         );
 
         if (!user) {
@@ -77,9 +77,13 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Consider a user online if they've been active in the last 5 minutes
-        const isOnline = user.lastActive &&
+        // Consider a user online if they've been active in the last 5 minutes AND 
+        // they haven't explicitly set themselves as offline
+        const isRecentlyActive = user.lastActive &&
             new Date().getTime() - new Date(user.lastActive).getTime() < 5 * 60 * 1000;
+
+        // A user is online if they're both marked as online and recently active
+        const isOnline = isRecentlyActive && user.isOnline !== false;
 
         return NextResponse.json({ isOnline });
     } catch (error) {
