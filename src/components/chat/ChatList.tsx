@@ -6,6 +6,8 @@ import { FiSearch, FiEdit2, FiMoreVertical, FiUser } from "react-icons/fi";
 import { formatDate, truncateText, getInitials, getAvatarColor } from "@/utils/helpers";
 import { ChatWithParticipant } from "@/utils/types";
 import Image from "next/image";
+import { decryptMessage, generateChatKey } from "@/lib/encryption";
+import { useSession } from "next-auth/react";
 
 type ChatListProps = {
     currentUserId: string;
@@ -18,20 +20,48 @@ export default function ChatList({ currentUserId, onStartNewChat }: ChatListProp
     const [searchQuery, setSearchQuery] = useState("");
     const router = useRouter();
     const pathname = usePathname();
+    const { data: session } = useSession();
 
     const fetchChats = useCallback(async () => {
         try {
             const response = await fetch("/api/chats");
             if (response.ok) {
                 const data = await response.json();
-                setChats(data);
+
+                // Process and decrypt last messages if they exist
+                const processedChats = data.map((chat: ChatWithParticipant) => {
+                    if (chat.lastMessage && chat.lastMessage.content && session?.user?.id) {
+                        // Try to decrypt the last message content
+                        try {
+                            const chatKey = generateChatKey(
+                                session.user.id,
+                                chat.participant._id.toString()
+                            );
+
+                            // Check if the content looks encrypted before trying to decrypt
+                            if (chat.lastMessage.content.length > 20) {
+                                chat.lastMessage.content = decryptMessage(
+                                    chat.lastMessage.content,
+                                    chatKey
+                                );
+                            }
+                        } catch (error) {
+                            console.error("Error decrypting message:", error);
+                            // If decryption fails, show a placeholder
+                            chat.lastMessage.content = "Encrypted message";
+                        }
+                    }
+                    return chat;
+                });
+
+                setChats(processedChats);
             }
         } catch (error) {
             console.error("Failed to fetch chats:", error);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [session?.user?.id]);
 
     useEffect(() => {
         fetchChats();
@@ -56,6 +86,18 @@ export default function ChatList({ currentUserId, onStartNewChat }: ChatListProp
 
     const isActive = (userId: string) => {
         return pathname === `/chat/${userId}`;
+    };
+
+    // Helper function to get the last message preview
+    const getLastMessagePreview = (chat: ChatWithParticipant) => {
+        if (!chat.lastMessage) return 'Start a conversation';
+
+        // Determine if the last message was sent by the current user
+        const isSentByCurrentUser = chat.lastMessage.sender === currentUserId;
+
+        // Format the message with prefix based on sender
+        const prefix = isSentByCurrentUser ? 'You: ' : '';
+        return prefix + truncateText(chat.lastMessage.content, 30);
     };
 
     return (
@@ -114,8 +156,8 @@ export default function ChatList({ currentUserId, onStartNewChat }: ChatListProp
                                     <button
                                         onClick={() => handleChatSelect(chat._id.toString(), participant._id.toString())}
                                         className={`w-full flex items-center p-3 text-left transition-colors ${isActive(participant._id.toString())
-                                                ? 'bg-primary-50 dark:bg-gray-700'
-                                                : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                            ? 'bg-primary-50 dark:bg-gray-700'
+                                            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                             }`}
                                     >
                                         <div className="relative flex-shrink-0">
@@ -152,12 +194,10 @@ export default function ChatList({ currentUserId, onStartNewChat }: ChatListProp
                                                 )}
                                             </div>
                                             <p className={`text-sm truncate ${chat.unreadCount > 0
-                                                    ? 'font-medium text-gray-900 dark:text-white'
-                                                    : 'text-gray-500 dark:text-gray-400'
+                                                ? 'font-medium text-gray-900 dark:text-white'
+                                                : 'text-gray-500 dark:text-gray-400'
                                                 }`}>
-                                                {chat.lastMessage
-                                                    ? truncateText(chat.lastMessage.content, 35)
-                                                    : 'Start a conversation'}
+                                                {getLastMessagePreview(chat)}
                                             </p>
                                         </div>
                                     </button>
