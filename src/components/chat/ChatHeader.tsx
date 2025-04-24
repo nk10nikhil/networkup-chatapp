@@ -23,6 +23,7 @@ export function ChatHeader({
         <div className="flex items-center px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             {isMobile && (
                 <button
+                    title="Back"
                     onClick={onBackClick}
                     className="mr-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
@@ -49,13 +50,13 @@ export function ChatHeader({
             </div>
 
             <div className="flex items-center space-x-2">
-                <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button title="Call" className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
                     <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                 </button>
-                <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button title="Video Call" className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
                     <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                 </button>
-                <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button title="More Options" className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
                     <FiMoreHorizontal className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                 </button>
             </div>
