@@ -8,6 +8,7 @@ import useChat from "@/hooks/useChat";
 import { ChatHeader } from "./ChatHeader";
 import Spinner from "@/components/ui/Spinner";
 import EmptyChatState from "./EmptyChatState";
+import useOnlineStatus from "@/hooks/useOnlineStatus";
 
 interface ChatAreaProps {
     chatId: string;
@@ -29,6 +30,9 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
     const [showEmptyState, setShowEmptyState] = useState<boolean>(false);
     const [initialLoadComplete, setInitialLoadComplete] = useState<boolean>(false);
     const hasSetEmptyStateRef = useRef<boolean>(false);
+
+    // Use our online status hook to detect if the participant is online
+    const { isOnline: participantIsOnline } = useOnlineStatus(participant._id);
 
     // Use our enhanced hook for real-time messaging
     const {
@@ -99,12 +103,12 @@ export default function ChatArea({ chatId, currentUserId, participant, isMobile 
 
     return (
         <div className="flex flex-col h-full">
-            {/* Chat header */}
+            {/* Chat header - now with real online status */}
             <ChatHeader
                 participant={participant}
                 isMobile={isMobile}
                 onBackClick={handleBackClick}
-                isOnline={initialLoadComplete && messages.length > 0}
+                isOnline={participantIsOnline}
             />
 
             {/* Messages area */}

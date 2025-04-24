@@ -2,7 +2,7 @@ import React, { memo } from "react";
 import { FiMoreHorizontal } from "react-icons/fi";
 
 interface EmptyChatStateProps {
-    participantName: string;
+    participantName?: string;
 }
 
 // Using memo to prevent unnecessary re-renders once mounted
@@ -16,7 +16,9 @@ const EmptyChatState = memo(({ participantName }: EmptyChatStateProps) => {
                 No messages yet
             </h3>
             <p className="text-gray-500 dark:text-gray-400 max-w-xs">
-                Send a message to start the conversation with {participantName}
+                {participantName
+                    ? `Send a message to start the conversation with ${participantName}`
+                    : "Select a chat or start a new conversation"}
             </p>
         </div>
     );
