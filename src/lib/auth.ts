@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { connectToDatabase } from '@/lib/db';
 import { compare } from 'bcryptjs';
 import { User } from 'next-auth';
+import { ObjectId } from 'mongodb';
 
 // Extend the built-in User type with our custom properties
 interface CustomUser extends User {
@@ -12,6 +13,24 @@ interface CustomUser extends User {
 // Add the verifyPassword function that's being used in login route
 export async function verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
     return await compare(plainPassword, hashedPassword);
+}
+
+// Function to mark a user as online in the database
+async function markUserAsOnline(userId: string) {
+    try {
+        const { db } = await connectToDatabase();
+        await db.collection('users').updateOne(
+            { _id: new ObjectId(userId) },
+            {
+                $set: {
+                    isOnline: true,
+                    lastActive: new Date()
+                }
+            }
+        );
+    } catch (error) {
+        console.error('Failed to mark user as online:', error);
+    }
 }
 
 export const authOptions: NextAuthOptions = {
@@ -41,6 +60,9 @@ export const authOptions: NextAuthOptions = {
                 if (!isPasswordValid) {
                     throw new Error('Invalid password');
                 }
+
+                // Mark the user as online when they successfully log in
+                await markUserAsOnline(user._id.toString());
 
                 return {
                     id: user._id.toString(),
@@ -74,8 +96,34 @@ export const authOptions: NextAuthOptions = {
                     email: token.email as string,
                     avatar: token.avatar as string | undefined,
                 };
+
+                // Update online status during active sessions
+                if (session.user.id) {
+                    await markUserAsOnline(session.user.id);
+                }
             }
             return session;
+        },
+    },
+    events: {
+        // When a user signs out, mark them as offline
+        async signOut({ token }) {
+            if (token?.id) {
+                try {
+                    const { db } = await connectToDatabase();
+                    await db.collection('users').updateOne(
+                        { _id: new ObjectId(token.id as string) },
+                        {
+                            $set: {
+                                isOnline: false,
+                                lastActive: new Date()
+                            }
+                        }
+                    );
+                } catch (error) {
+                    console.error('Failed to mark user as offline during signout:', error);
+                }
+            }
         },
     },
     pages: {

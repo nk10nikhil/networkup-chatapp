@@ -19,13 +19,13 @@ export async function POST(request: NextRequest) {
         const userId = session.user.id;
         const { db } = await connectToDatabase();
 
-        // Update the user's lastActive timestamp
+        // Update the user's lastActive timestamp and set isOnline to true
         await db.collection('users').updateOne(
             { _id: new ObjectId(userId) },
             {
                 $set: {
-                    lastActive: new Date(),
-                    isOnline: true
+                    isOnline: true,
+                    lastActive: new Date()
                 }
             }
         );
@@ -62,12 +62,17 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        // If checking own status, always return online
+        if (userId === session.user.id) {
+            return NextResponse.json({ isOnline: true });
+        }
+
         const { db } = await connectToDatabase();
 
-        // Get the user's online status and lastActive timestamp
+        // Get the user's online status directly from the database
         const user = await db.collection('users').findOne(
             { _id: new ObjectId(userId) },
-            { projection: { lastActive: 1, isOnline: 1 } }
+            { projection: { isOnline: 1, lastActive: 1 } }
         );
 
         if (!user) {
@@ -77,13 +82,23 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Consider a user online if they've been active in the last 5 minutes AND 
-        // they haven't explicitly set themselves as offline
-        const isRecentlyActive = user.lastActive &&
-            new Date().getTime() - new Date(user.lastActive).getTime() < 5 * 60 * 1000;
+        // If the user has an explicit isOnline status, use that first
+        if (typeof user.isOnline === 'boolean') {
+            // But still check if they've been active recently
+            const isRecentlyActive = user.lastActive &&
+                (new Date().getTime() - new Date(user.lastActive).getTime() < 5 * 60 * 1000);
 
-        // A user is online if they're both marked as online and recently active
-        const isOnline = isRecentlyActive && user.isOnline !== false;
+            // Only consider them online if both flags are true
+            if (user.isOnline && isRecentlyActive) {
+                return NextResponse.json({ isOnline: true });
+            } else {
+                return NextResponse.json({ isOnline: false });
+            }
+        }
+
+        // Fallback: Check if the user has been active in the last 5 minutes
+        const isOnline = user.lastActive &&
+            (new Date().getTime() - new Date(user.lastActive).getTime() < 5 * 60 * 1000);
 
         return NextResponse.json({ isOnline });
     } catch (error) {

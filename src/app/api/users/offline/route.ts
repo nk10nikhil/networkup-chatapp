@@ -7,16 +7,35 @@ import { ObjectId } from 'mongodb';
 // POST: Mark user as offline
 export async function POST(request: NextRequest) {
     try {
+        // Try to get the session
         const session = await getServerSession(authOptions);
+        let userId;
 
-        if (!session?.user) {
+        // If session exists, use that user ID
+        if (session?.user) {
+            userId = session.user.id;
+        } else {
+            // For beacon API or other cases where session might not be available
+            // Check if request body contains userId
+            try {
+                const body = await request.json().catch(() => ({}));
+                userId = body?.userId;
+            } catch (err) {
+                // If no body, check if userId is in URL
+                const url = new URL(request.url);
+                userId = url.searchParams.get('userId');
+            }
+        }
+
+        // If we still don't have a userId, return unauthorized
+        if (!userId) {
             return NextResponse.json(
-                { message: 'Unauthorized' },
-                { status: 401 }
+                { message: 'User ID is required' },
+                { status: 400 }
             );
         }
 
-        const userId = session.user.id;
+        // Connect to database and update user status
         const { db } = await connectToDatabase();
 
         // Mark the user as offline
@@ -24,8 +43,8 @@ export async function POST(request: NextRequest) {
             { _id: new ObjectId(userId) },
             {
                 $set: {
-                    lastActive: new Date(),
-                    isOnline: false
+                    isOnline: false,
+                    lastActive: new Date()
                 }
             }
         );
