@@ -5,8 +5,8 @@ import { authOptions } from '@/lib/auth';
 import { ObjectId } from 'mongodb';
 import { markInactiveUsersAsOffline } from '@/lib/status-manager';
 
-// Define a shorter activity threshold for considering a user online (2 minutes)
-const ACTIVITY_THRESHOLD = 2 * 60 * 1000;
+// Align with status-manager's threshold for consistency (20 seconds)
+const ACTIVITY_THRESHOLD = 20 * 1000;
 
 // POST: Update user's online status
 export async function POST(request: NextRequest) {
@@ -77,6 +77,9 @@ export async function GET(request: NextRequest) {
 
         const { db } = await connectToDatabase();
 
+        // Run cleanup first to mark inactive users as offline
+        await markInactiveUsersAsOffline();
+
         // Get the user's online status directly from the database
         const user = await db.collection('users').findOne(
             { _id: new ObjectId(userId) },
@@ -90,12 +93,9 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // First, always run cleanup to ensure we're not showing stale online statuses
-        await markInactiveUsersAsOffline();
-
         // A user is considered online ONLY if:
         // 1. They have the isOnline flag set to true AND
-        // 2. They have been active within the last 2 minutes
+        // 2. They have been active within the last threshold period
         const isRecentlyActive = user.lastActive &&
             (new Date().getTime() - new Date(user.lastActive).getTime() < ACTIVITY_THRESHOLD);
 

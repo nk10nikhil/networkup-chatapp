@@ -1,9 +1,9 @@
 import { connectToDatabase } from './db';
 import { ObjectId } from 'mongodb';
 
-// Reduce the time threshold for considering a user inactive (2 minutes in milliseconds)
-// This ensures faster detection when someone closes the app
-const INACTIVE_THRESHOLD = 2 * 60 * 1000;
+// Drastically reduce the time threshold for considering a user inactive (20 seconds)
+// This ensures nearly immediate detection when someone closes the app
+const INACTIVE_THRESHOLD = 20 * 1000;
 
 /**
  * Mark users as offline if they haven't been active for the specified threshold
