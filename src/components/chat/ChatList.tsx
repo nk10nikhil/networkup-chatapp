@@ -8,6 +8,7 @@ import { ChatWithParticipant } from "@/utils/types";
 import Image from "next/image";
 import { decryptMessage, generateChatKey } from "@/lib/encryption";
 import { useSession } from "next-auth/react";
+import { RiContactsFill } from "react-icons/ri";
 
 type ChatListProps = {
     currentUserId: string;
@@ -112,7 +113,7 @@ export default function ChatList({ currentUserId, onStartNewChat }: ChatListProp
                         className="p-2 rounded-full bg-primary-100 dark:bg-gray-700 hover:bg-primary-200 dark:hover:bg-gray-600 transition-colors"
                         aria-label="Start new chat"
                     >
-                        <FiEdit2 className="w-5 h-5 text-primary-700 dark:text-primary-300" />
+                        <RiContactsFill className="w-5 h-5 text-primary-700 dark:text-primary-300" />
                     </button>
                 </div>
                 <div className="relative">
@@ -130,7 +131,7 @@ export default function ChatList({ currentUserId, onStartNewChat }: ChatListProp
             <div className="flex-1 overflow-y-auto">
                 {loading ? (
                     <div className="flex justify-center items-center h-32">
-                        <div className="loader">Loading...</div>
+                        <div className="">Loading...</div>
                     </div>
                 ) : filteredChats.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-32 px-6 text-center">
