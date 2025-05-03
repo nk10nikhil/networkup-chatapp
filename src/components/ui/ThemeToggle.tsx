@@ -1,29 +1,6 @@
-// "use client"
-
-// import { useTheme } from "@/components/ThemeProvider"
-// import { FiMoon, FiSun } from "react-icons/fi"
-
-// export function ThemeToggle() {
-//     const { theme, setTheme } = useTheme()
-
-//     return (
-//         <button
-//             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-//             className="p-2 rounded-full bg-primary-100 dark:bg-gray-700 hover:bg-primary-200 dark:hover:bg-gray-600 transition-colors"
-//             aria-label="Toggle theme"
-//         >
-//             {theme === "dark" ? (
-//                 <FiSun className="w-5 h-5 text-yellow-400" />
-//             ) : (
-//                 <FiMoon className="w-5 h-5 text-primary-600" />
-//             )}
-//         </button>
-//     )
-// }
-
 "use client";
 
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/ThemeProvider";
 import { useState, useEffect } from "react";
 import { FiSun, FiMoon } from "react-icons/fi";
 
@@ -38,7 +15,10 @@ export function ThemeToggle() {
 
     if (!mounted) {
         return (
-            <button className="p-2 rounded-md bg-gray-100 dark:bg-gray-700">
+            <button
+                className="p-2 rounded-md bg-gray-100 dark:bg-gray-700"
+                aria-label="Toggle theme"
+            >
                 <div className="w-5 h-5"></div>
             </button>
         );

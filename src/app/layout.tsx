@@ -25,7 +25,7 @@ export default async function RootLayout({
             <body className={inter.className}>
                 <AuthProvider session={session}>
                     <ThemeProvider
-                        attribute="data-theme"
+                        attribute="class"
                         defaultTheme="system"
                         enableSystem
                         disableTransitionOnChange
